@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Генератор объявлений для Яндекс Директ</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Генератор объявлений для Яндекс Директ</h1>
+        
+        <form id="gen-form" action="/generate" method="post">
+            <div class="form-group">
+                <label for="product">Название продукта</label>
+                <input type="text" id="product" name="product" required placeholder="Например: Смартфон Xiaomi 14">
+            </div>
+            
+            <div class="form-group">
+                <label for="landing_page">Ссылка на продукт</label>
+                <input type="url" id="landing_page" name="landing_page" required placeholder="https://example.com">
+            </div>
+            
+            <button id="submit-btn" type="submit">Сгенерировать объявления</button>
+        </form>
+
+        {% if error %}
+        <div class="alert">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        {% if ads %}
+        <div class="results" id="results">
+            <h2>Результаты генерации</h2>
+            {% for ad in ads %}
+            <div class="ad-card">
+                <div class="ad-content">
+                    <h3>{{ ad.headline }}</h3>
+                    <p>{{ ad.text }}</p>
+                    {% if ad.landing_page %}
+                    <p><a href="{{ ad.landing_page }}" target="_blank" rel="nofollow noopener">{{ ad.landing_page }}</a></p>
+                    {% endif %}
+                </div>
+                <div class="ad-image">
+                    <img src="{{ ad.image_url }}" alt="Сгенерированное изображение"
+                         onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'600\' height=\'400\'><rect width=\'100%\' height=\'100%\' fill=\'%23e0e0e0\'/><text x=\'50%\' y=\'50%\' dominant-baseline=\'middle\' text-anchor=\'middle\' fill=\'%23666\' font-family=\'Arial\' font-size=\'18\'>Нет изображения</text></svg>';">
+                </div>
+                <div class="download">
+                    <a href="/download/{{ ad.csv_file }}" class="btn">Скачать CSV</a>
+                    {% if ad.image_url %}
+                    <a href="{{ ad.image_url }}" download class="btn" style="margin-left:8px;">Скачать изображение</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if not ads %}
+        <div class="results" id="results" style="display:none">
+            <h2>Результаты генерации</h2>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="overlay" id="overlay" style="display:none">
+        <div class="spinner"></div>
+        <div class="spinner-text">Генерируем объявления…</div>
+    </div>
+
+    <script>
+    const form = document.getElementById('gen-form');
+    const btn = document.getElementById('submit-btn');
+    const results = document.getElementById('results');
+    const overlay = document.getElementById('overlay');
+
+    function showOverlay() { overlay.style.display = 'flex'; }
+    function hideOverlay() { overlay.style.display = 'none'; }
+
+    function adCardHtml(ad) {
+        const imgSrc = ad.image_url && ad.image_url.length > 0 ? ad.image_url : "";
+        return `
+        <div class="ad-card">
+            <div class="ad-content">
+                <h3>${ad.headline || ''}</h3>
+                <p>${ad.text || ''}</p>
+                ${ad.landing_page ? `<p><a href="${ad.landing_page}" target="_blank" rel="nofollow noopener">${ad.landing_page}</a></p>` : ''}
+            </div>
+            <div class="ad-image">
+                <img src="${imgSrc}" alt="Сгенерированное изображение"
+                     onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'600\' height=\'400\'><rect width=\'100%\' height=\'100%\' fill=\'%23e0e0e0\'/><text x=\'50%\' y=\'50%\' dominant-baseline=\'middle\' text-anchor=\'middle\' fill=\'%23666\' font-family=\'Arial\' font-size=\'18\'>Нет изображения</text></svg>';">
+            </div>
+            <div class="download">
+                ${ad.csv_file ? `<a href="/download/${ad.csv_file}" class="btn">Скачать CSV</a>` : ''}
+                ${ad.image_url ? `<a href="${ad.image_url}" download class="btn" style="margin-left:8px;">Скачать изображение</a>` : ''}
+            </div>
+        </div>`;
+    }
+
+    async function generateOne(product, landing, variant) {
+        const fd = new FormData();
+        fd.append('product', product);
+        fd.append('landing_page', landing);
+        fd.append('variant', String(variant));
+        const resp = await fetch('/generate_one', { method: 'POST', body: fd });
+        if (!resp.ok) throw new Error('generation failed');
+        return await resp.json();
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const product = document.getElementById('product').value.trim();
+        const landing = document.getElementById('landing_page').value.trim();
+        if (!product || !landing) return;
+
+        btn.disabled = true;
+        results.style.display = '';
+        showOverlay();
+        try {
+            results.innerHTML = '<h2>Результаты генерации</h2>';
+            for (let i = 1; i <= 3; i++) {
+                try {
+                    const ad = await generateOne(product, landing, i);
+                    if (ad.ok) {
+                        results.insertAdjacentHTML('beforeend', adCardHtml(ad));
+                    }
+                } catch (err) {
+                    // пропускаем неудачный вариант
+                }
+            }
+        } finally {
+            hideOverlay();
+            btn.disabled = false;
+        }
+    });
+    </script>
+</body>
+</html>
